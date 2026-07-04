@@ -1,4 +1,4 @@
-import { GIFEncoder, applyPalette, quantize } from "gifenc";
+import { GIFEncoder, nearestColorIndex, quantize, type GifPalette } from "gifenc";
 
 import {
   getToolcraftVideoExportSize,
@@ -67,6 +67,98 @@ function createGifPixelReader(width: number, height: number): GifPixelReader {
       return buffer;
     },
   };
+}
+
+function packRgb565(r: number, g: number, b: number): number {
+  return ((r & 0xf8) << 8) | ((g & 0xfc) << 3) | (b >> 3);
+}
+
+function clampByte(value: number): number {
+  return value < 0 ? 0 : value > 255 ? 255 : value;
+}
+
+// A 5-6-5 bit RGB cube has 65536 buckets. Precomputing the nearest palette
+// index for every bucket up front bounds the expensive palette search to a
+// fixed cost per frame (65536 * palette size) instead of a per-pixel lookup —
+// with error diffusion, nearly every pixel ends up a slightly different
+// color, so a lazily-populated cache would rarely hit and degrade to an
+// O(width * height * paletteSize) search.
+function buildRgb565PaletteLut(palette: GifPalette): Uint8Array {
+  const lut = new Uint8Array(65536);
+
+  for (let key = 0; key < 65536; key++) {
+    const r = (key >> 8) & 0xf8;
+    const g = (key >> 3) & 0xfc;
+    const b = (key << 3) & 0xf8;
+
+    lut[key] = nearestColorIndex(palette, [r, g, b]);
+  }
+
+  return lut;
+}
+
+// GIF's 256-color palette bands smooth gradients (e.g. a blurred background)
+// into flat, blobby regions when colors snap to the nearest palette entry.
+// Floyd-Steinberg error diffusion spreads each pixel's quantization error to
+// its neighbors, breaking the bands up into a fine dither pattern that reads
+// as smooth at normal viewing distance.
+function ditherToPalette(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  palette: GifPalette,
+  paletteLut: Uint8Array,
+): Uint8Array {
+  const indices = new Uint8Array(width * height);
+  const buffer = new Float32Array(rgba.length);
+
+  for (let i = 0; i < rgba.length; i++) {
+    buffer[i] = rgba[i];
+  }
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const r = clampByte(buffer[i]);
+      const g = clampByte(buffer[i + 1]);
+      const b = clampByte(buffer[i + 2]);
+      const index = paletteLut[packRgb565(r, g, b)];
+
+      indices[y * width + x] = index;
+
+      const paletteColor = palette[index];
+      const errorR = r - paletteColor[0];
+      const errorG = g - paletteColor[1];
+      const errorB = b - paletteColor[2];
+
+      diffuseError(buffer, width, height, x + 1, y, errorR, errorG, errorB, 7 / 16);
+      diffuseError(buffer, width, height, x - 1, y + 1, errorR, errorG, errorB, 3 / 16);
+      diffuseError(buffer, width, height, x, y + 1, errorR, errorG, errorB, 5 / 16);
+      diffuseError(buffer, width, height, x + 1, y + 1, errorR, errorG, errorB, 1 / 16);
+    }
+  }
+
+  return indices;
+}
+
+function diffuseError(
+  buffer: Float32Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  errorR: number,
+  errorG: number,
+  errorB: number,
+  factor: number,
+): void {
+  if (x < 0 || x >= width || y >= height) return;
+
+  const i = (y * width + x) * 4;
+
+  buffer[i] += errorR * factor;
+  buffer[i + 1] += errorG * factor;
+  buffer[i + 2] += errorB * factor;
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {
@@ -162,7 +254,8 @@ export async function exportSceneGif({
 
     const data = pixelReader.readPixels(canvas);
     const palette = quantize(data, 256);
-    const indexed = applyPalette(data, palette);
+    const paletteLut = buildRgb565PaletteLut(palette);
+    const indexed = ditherToPalette(data, width, height, palette, paletteLut);
 
     encoder.writeFrame(indexed, width, height, { delay: delayMs, palette });
     reportProgress(0.05 + (0.9 * (index + 1)) / frameTimes.length);

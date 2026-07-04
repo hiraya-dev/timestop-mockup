@@ -35,4 +35,9 @@ declare module "gifenc" {
     palette: GifPalette,
     format?: string,
   ): Uint8Array;
+  export function nearestColorIndex(
+    colors: GifPalette,
+    pixel: number[],
+    distanceFn?: (a: number[], b: number[]) => number,
+  ): number;
 }
