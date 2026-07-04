@@ -66,4 +66,23 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("react") || id.includes("scheduler")) return "react";
+          if (
+            id.includes("@dnd-kit") ||
+            id.includes("@phosphor-icons") ||
+            id.includes("@tanstack") ||
+            id.includes("motion")
+          ) {
+            return "vendor";
+          }
+        },
+      },
+    },
+  },
 });
