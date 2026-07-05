@@ -55,7 +55,11 @@ export function pickSupportedVideoMime(
 export function supportsManualCanvasFrameCapture(
   track: MediaStreamTrack | undefined,
 ): track is CanvasCaptureTrack {
-  return typeof track?.requestFrame === "function";
+  if (!track) {
+    return false;
+  }
+
+  return typeof (track as CanvasCaptureTrack).requestFrame === "function";
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {
