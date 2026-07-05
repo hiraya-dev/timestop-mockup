@@ -1,13 +1,13 @@
 # Loop Frame
 
-A browser-based product demo for turning UI section screenshots into polished
-looping GIFs, videos, and stills — styled backdrop, cut or crossfade transitions,
-frame styling, and one-click export.
+An internal presentation tool for turning UI section screenshots into layered
+section mockups — styled backdrop, cut or crossfade transitions, frame styling,
+and export to looping GIF, video, or still.
 
-Built with [Toolcraft](docs/toolcraft/). This repo is for portfolio and client
-presentation demos, not for resale as a standalone app or template. Platform,
-template-marketplace, and resale uses require a separate commercial license from
-Pixel Point — see [`LICENSE.md`](LICENSE.md).
+Built with [Toolcraft](docs/toolcraft/). Distribution is the deployed app only —
+this repo stays private. Do not resell or repackage the app as a standalone
+product or template. Platform, template-marketplace, and resale uses require a
+separate commercial license from Pixel Point — see [`LICENSE.md`](LICENSE.md).
 
 ## Getting started
 
