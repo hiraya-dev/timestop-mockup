@@ -1,7 +1,13 @@
-# Layered GIF Creator
+# Loop Frame
 
-A browser-based tool for compositing layered images (background, foreground, text)
-into looping GIF/video exports — built to showcase section UI from web designs.
+A browser-based product demo for turning UI section screenshots into polished
+looping GIFs, videos, and stills — styled backdrop, cut or crossfade transitions,
+frame styling, and one-click export.
+
+Built with [Toolcraft](docs/toolcraft/). This repo is for portfolio and client
+presentation demos, not for resale as a standalone app or template. Platform,
+template-marketplace, and resale uses require a separate commercial license from
+Pixel Point — see [`LICENSE.md`](LICENSE.md).
 
 ## Getting started
 

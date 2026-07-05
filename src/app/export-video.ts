@@ -133,7 +133,7 @@ export async function exportSceneVideo({
       }
 
       reportProgress(1);
-      downloadBlob(blob, `layered-gif.${mime.extension}`);
+      downloadBlob(blob, `loop-frame.${mime.extension}`);
       resolve(blob);
     };
 

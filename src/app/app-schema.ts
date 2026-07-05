@@ -282,7 +282,7 @@ export const appSchema = defineToolcraft({
           title: "Export",
         },
       ],
-      title: "Layered GIF Creator",
+      title: "Loop Frame",
     },
     timeline: {
       defaultDurationSeconds: 1.5,

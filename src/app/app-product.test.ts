@@ -124,7 +124,7 @@ function getDrawImageCalls(calls: ContextCall[]) {
   return calls.filter((call) => call.method === "drawImage");
 }
 
-describe("layered gif creator scene", () => {
+describe("loop frame scene", () => {
   it("preview render composites heavy media in one cached pass", () => {
     const recording = createRecordingContext();
     let resolveCalls = 0;
@@ -504,11 +504,11 @@ describe("layered gif creator scene", () => {
 
   it("image export format changes the exported mime type", () => {
     expect(getSceneImageExportPlan({ "export.image.format": "png" }, true)).toMatchObject({
-      fileName: "layered-gif-frame.png",
+      fileName: "loop-frame.png",
       mimeType: "image/png",
     });
     expect(getSceneImageExportPlan({ "export.image.format": "jpg" }, true)).toMatchObject({
-      fileName: "layered-gif-frame.jpg",
+      fileName: "loop-frame.jpg",
       mimeType: "image/jpeg",
     });
   });
@@ -636,7 +636,7 @@ describe("layered gif creator scene", () => {
   });
 });
 
-describe("layered gif creator runtime setup", () => {
+describe("loop frame runtime setup", () => {
   it("render scale slider is a discrete control", () => {
     const setupSection = appSchema.panels.controls?.sections.find((section) =>
       Object.values(section.controls).some(

@@ -275,7 +275,7 @@ export async function exportSceneGif({
   const blob = new Blob([gifBuffer], { type: "image/gif" });
 
   reportProgress(1);
-  downloadBlob(blob, "layered-showcase.gif");
+  downloadBlob(blob, "loop-frame.gif");
 
   return blob;
 }

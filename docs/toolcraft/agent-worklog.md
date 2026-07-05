@@ -8,6 +8,23 @@ Mode: product
 
 ## Decision Trail
 
+### Iteration 2 — Loop Frame rename and demo polish
+
+- Request: Rename the app to Loop Frame; position it as a polished product demo, not a sellable standalone product.
+- Task type: Branding/copy pass on user-facing title, export filenames, and README positioning.
+- User-visible result: Browser tab, controls panel title, and export filenames use Loop Frame branding; README states portfolio/demo use and Toolcraft resale limits.
+- Source/reference checked: Existing product behavior and export helpers in `src/app/export-*.ts`; Toolcraft Designer License resale limits in `LICENSE.md`.
+- Reference inputs: none (rename-only pass; no new reference media).
+- Docs/contracts read: AGENTS.md, workflow.md, decision-contract.md.
+- Contract rules applied: workflow-required.
+- Decision: Rename user-facing title to "Loop Frame"; align default export filenames to `loop-frame.*`; add README licensing note without changing product behavior.
+- Alternatives rejected: "Loopframe" one-word slug (user chose two-word title); keeping legacy `layered-*` export filenames (hurts demo polish); omitting README license note (user cannot sell/resell the app as a standalone product).
+- State/output mapping: No schema targets or renderer behavior changed; `controls.title`, HTML `<title>`, `productName`, and export download filenames only.
+- Files changed: `index.html`, `src/app/app-schema.ts`, `src/app/app-acceptance.ts`, `src/app/export-gif.ts`, `src/app/export-image.ts`, `src/app/export-video.ts`, `README.md`, `package.json`, test describe labels in `src/app/app-product.test.ts` and `e2e/app-product.spec.ts`.
+- Verification: Tier 2 — `pnpm verify:quick`.
+- Skipped checks: browser rerun (no renderer/control/export behavior change).
+- Risks: none; branding-only pass.
+
 ### Iteration 1 — Layered GIF Creator first working version
 
 - Request: Create a GIF generator with images as input to show section UI from web designs, with the ability to change the background to an image, a solid color, or a gradient. A reference video was provided.

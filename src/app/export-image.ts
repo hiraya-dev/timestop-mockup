@@ -32,7 +32,7 @@ export function getSceneImageExportPlan(
   const format = values["export.image.format"] === "jpg" ? "jpg" : "png";
 
   return {
-    fileName: `layered-gif-frame.${format}`,
+    fileName: `loop-frame.${format}`,
     format,
     // JPEG has no alpha channel, so JPG export always keeps the background.
     includeBackground: format === "jpg" ? true : includeBackground,

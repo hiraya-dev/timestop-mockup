@@ -481,9 +481,9 @@ export const appTransferMode: ToolcraftTransferMode = {
 
 export const appProductReadiness: ToolcraftProductReadiness = {
   mode: "product",
-  productName: "Layered GIF Creator",
+  productName: "Loop Frame",
   productSummary:
-    "Turns uploaded web-design section screenshots into a looping showcase GIF with a configurable solid, gradient, or image background.",
+    "Turns uploaded UI section screenshots into a polished looping showcase with a configurable backdrop and GIF, video, or still export.",
   requestedBehavior:
     "Create a GIF generator with images as input to show section UI from web designs, with the ability to change the background to an image, a solid color, or a gradient.",
 };

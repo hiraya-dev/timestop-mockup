@@ -183,7 +183,7 @@ async function uploadTwoSectionImages(page: Page): Promise<void> {
   await waitForToolcraftAnimationFrames(page, 4);
 }
 
-test.describe("layered gif creator product", () => {
+test.describe("loop frame product", () => {
   test("browser: section images upload reorder rotate flip clear and reset drive the frame sequence", async ({
     page,
   }) => {
