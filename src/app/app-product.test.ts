@@ -7,7 +7,9 @@ import {
 } from "@/toolcraft/runtime";
 
 import { appSchema } from "./app-schema";
-import { getGifFrameTimesSeconds } from "./export-gif";
+import { getGifFrameTimesSeconds, buildGifPalette } from "./export-gif";
+import { getSceneAnimatedExportSize, getSceneGifExportSize } from "./export-render-size";
+import { shouldDitherGifBackground } from "./export-scene-canvas";
 import { getSceneImageExportPlan } from "./export-image";
 import { pickSupportedVideoMime } from "./export-video";
 import {
@@ -541,21 +543,65 @@ describe("loop frame scene", () => {
     expect(nothingSupported.extension).toBe("webm");
   });
 
-  it("video export resolution uses encoder safe dimensions", () => {
+  it("video export resolution matches image export quality at current video size", () => {
     const state = makeState({});
-    const current = getToolcraftVideoExportSize({ resolution: "current", state });
+    const animated = getSceneAnimatedExportSize(state);
 
-    expect(current).toMatchObject({ height: 1080, width: 1920 });
-    expect(current.width % 2).toBe(0);
-    expect(current.height % 2).toBe(0);
+    expect(animated).toMatchObject({ height: 2160, width: 3840 });
+    expect(animated.width % 2).toBe(0);
+    expect(animated.height % 2).toBe(0);
 
-    const fourK = getToolcraftVideoExportSize({ resolution: "4k", state });
+    const fourK = getSceneAnimatedExportSize(
+      makeState({ "export.video.resolution": "4k" }),
+    );
 
     expect(fourK.width).toBeLessThanOrEqual(3840);
     expect(fourK.height).toBeLessThanOrEqual(2160);
     expect(fourK.width % 2).toBe(0);
     expect(fourK.height % 2).toBe(0);
     expect(fourK.width / fourK.height).toBeCloseTo(1920 / 1080, 1);
+  });
+
+  it("gif export resolution follows image export quality with a long-edge cap", () => {
+    const state = makeState({});
+    const gifSize = getSceneGifExportSize(state);
+
+    expect(Math.max(gifSize.width, gifSize.height)).toBe(2048);
+    expect(gifSize.width % 2).toBe(0);
+    expect(gifSize.height % 2).toBe(0);
+  });
+
+  it("gif background dithering applies only to gradients and blurred image backdrops", () => {
+    expect(
+      shouldDitherGifBackground({
+        backgroundBlur: 0,
+        backgroundColor: "#111113",
+        backgroundGradient: null,
+        backgroundImage: null,
+        backgroundMode: "solid",
+        cornerRadius: 16,
+        frames: [],
+        includeBackground: true,
+        scale: 100,
+        shadow: true,
+        transition: "cut",
+      }),
+    ).toBe(false);
+    expect(
+      shouldDitherGifBackground({
+        backgroundBlur: 20,
+        backgroundColor: "#111113",
+        backgroundGradient: null,
+        backgroundImage: { dataUrl: "x", id: "bg" },
+        backgroundMode: "image",
+        cornerRadius: 16,
+        frames: [],
+        includeBackground: true,
+        scale: 100,
+        shadow: true,
+        transition: "cut",
+      }),
+    ).toBe(true);
   });
 
   it("export actions deliver gif video and png output", () => {
@@ -569,7 +615,7 @@ describe("loop frame scene", () => {
       typeof action === "string" ? action : action.value,
     );
 
-    expect(actionValues).toEqual(["export-video", "export-png", "export-gif"]);
+    expect(actionValues).toEqual(["export-gif", "export-png", "export-video"]);
 
     const cutTimes = getGifFrameTimesSeconds(1.5, 3, "cut");
 
@@ -581,6 +627,24 @@ describe("loop frame scene", () => {
 
     expect(fadeTimes.length).toBe(30);
     expect(fadeTimes.at(-1)!).toBeLessThan(1.5);
+  });
+
+  it("gif export builds frame-weighted palettes and keeps masked pixels on nearest color", () => {
+    const rgba = new Uint8ClampedArray([
+      255, 0, 0, 255,
+      0, 255, 0, 255,
+      0, 0, 0, 255,
+      255, 255, 255, 255,
+    ]);
+    const frameMask = new Uint8Array([1, 0, 1, 0]);
+    const palette = buildGifPalette(rgba, frameMask);
+
+    expect(
+      palette.some((color) => color[0]! > 200 && color[1]! < 50 && color[2]! < 50),
+    ).toBe(true);
+    expect(
+      palette.some((color) => color[0]! < 50 && color[1]! > 200 && color[2]! < 50),
+    ).toBe(true);
   });
 
   it("timeline loop maps one frame cycle to the edited duration", () => {

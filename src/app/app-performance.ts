@@ -561,7 +561,7 @@ export const appPerformance: ToolcraftPerformanceConfig = defineToolcraftPerform
     },
     {
       automated: true,
-      automatedTestName: "video export resolution uses encoder safe dimensions",
+      automatedTestName: "video export resolution matches image export quality at current video size",
       browser: true,
       browserTestName: "browser perf: 4k video export completes within the export budget",
       budget: { maxExportMs: 8000 },
@@ -718,7 +718,7 @@ export const appPerformance: ToolcraftPerformanceConfig = defineToolcraftPerform
     },
     {
       automated: true,
-      automatedTestName: "video export resolution uses encoder safe dimensions",
+      automatedTestName: "video export resolution matches image export quality at current video size",
       browser: true,
       browserTestName: "browser perf: video export resolution change stays responsive",
       budget: { maxFrameGapMs: 120, maxLongTaskMs: 200, maxInteractionMs: 2000 },

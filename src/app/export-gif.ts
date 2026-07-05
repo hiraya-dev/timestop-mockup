@@ -1,15 +1,17 @@
 import { GIFEncoder, nearestColorIndex, quantize, type GifPalette } from "gifenc";
 
 import {
-  getToolcraftVideoExportSize,
   shouldIncludeToolcraftExportBackground,
   type ToolcraftState,
 } from "@/toolcraft/runtime";
 
-import { drawScene, getSceneSettings, loadSceneImages, type SceneSettings } from "./scene";
+import { getSceneGifExportSize } from "./export-render-size";
+import { paintSceneExportFrame, shouldDitherGifBackground } from "./export-scene-canvas";
+import { getSceneSettings, loadSceneImages, type SceneSettings } from "./scene";
 
 const GIF_CROSSFADE_FPS = 20;
-const GIF_MAX_LONG_EDGE = 1600;
+const GIF_FRAME_PALETTE_COLORS = 200;
+const GIF_BACKGROUND_PALETTE_COLORS = 56;
 
 type GifPixelReader = {
   dispose: () => void;
@@ -97,17 +99,131 @@ function buildRgb565PaletteLut(palette: GifPalette): Uint8Array {
   return lut;
 }
 
+function collectMaskedPixels(
+  rgba: Uint8ClampedArray,
+  frameMask: Uint8Array,
+  wantFrame: boolean,
+): Uint8ClampedArray {
+  const values: number[] = [];
+
+  for (let pixelIndex = 0; pixelIndex < frameMask.length; pixelIndex++) {
+    const isFrame = frameMask[pixelIndex] !== 0;
+
+    if (isFrame !== wantFrame) {
+      continue;
+    }
+
+    const offset = pixelIndex * 4;
+
+    values.push(rgba[offset]!, rgba[offset + 1]!, rgba[offset + 2]!, rgba[offset + 3]!);
+  }
+
+  return new Uint8ClampedArray(values);
+}
+
+function mergePalettes(
+  primary: GifPalette,
+  secondary: GifPalette,
+  maxColors: number,
+): GifPalette {
+  const merged: GifPalette = [];
+  const seen = new Set<string>();
+
+  for (const color of [...primary, ...secondary]) {
+    const key = `${color[0]},${color[1]},${color[2]}`;
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(color);
+
+    if (merged.length >= maxColors) {
+      break;
+    }
+  }
+
+  return merged;
+}
+
+export function buildGifPalette(
+  rgba: Uint8ClampedArray,
+  frameMask: Uint8Array,
+): GifPalette {
+  const framePixels = collectMaskedPixels(rgba, frameMask, true);
+  const backgroundPixels = collectMaskedPixels(rgba, frameMask, false);
+
+  if (framePixels.length < 16 || backgroundPixels.length < 16) {
+    return quantize(rgba, 256);
+  }
+
+  const framePalette = quantize(
+    framePixels,
+    Math.min(GIF_FRAME_PALETTE_COLORS, 256),
+  );
+  const backgroundPalette = quantize(
+    backgroundPixels,
+    Math.min(
+      GIF_BACKGROUND_PALETTE_COLORS,
+      Math.max(1, 256 - framePalette.length),
+    ),
+  );
+
+  return mergePalettes(framePalette, backgroundPalette, 256);
+}
+
+function nearestToPalette(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  paletteLut: Uint8Array,
+): Uint8Array {
+  const indices = new Uint8Array(width * height);
+
+  for (let pixelIndex = 0; pixelIndex < indices.length; pixelIndex++) {
+    const offset = pixelIndex * 4;
+
+    indices[pixelIndex] = paletteLut[
+      packRgb565(rgba[offset]!, rgba[offset + 1]!, rgba[offset + 2]!)
+    ]!;
+  }
+
+  return indices;
+}
+
+export function indexGifSceneFrame(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  frameMask: Uint8Array,
+  settings: SceneSettings,
+): Uint8Array {
+  const palette = buildGifPalette(rgba, frameMask);
+  const paletteLut = buildRgb565PaletteLut(palette);
+
+  if (!shouldDitherGifBackground(settings)) {
+    return nearestToPalette(rgba, width, height, paletteLut);
+  }
+
+  return ditherToPalette(rgba, width, height, palette, paletteLut, frameMask);
+}
+
 // GIF's 256-color palette bands smooth gradients (e.g. a blurred background)
 // into flat, blobby regions when colors snap to the nearest palette entry.
 // Floyd-Steinberg error diffusion spreads each pixel's quantization error to
 // its neighbors, breaking the bands up into a fine dither pattern that reads
-// as smooth at normal viewing distance.
+// as smooth at normal viewing distance. UI frame pixels are already sharp
+// detail rather than a smooth band, so diffusing error into or out of them
+// just reads as extra grain — `frameMask` marks those pixels (alpha > 0 in a
+// background-less render) so only background pixels propagate error.
 function ditherToPalette(
   rgba: Uint8ClampedArray,
   width: number,
   height: number,
   palette: GifPalette,
   paletteLut: Uint8Array,
+  frameMask: Uint8Array | null,
 ): Uint8Array {
   const indices = new Uint8Array(width * height);
   const buffer = new Float32Array(rgba.length);
@@ -118,23 +234,72 @@ function ditherToPalette(
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
+      const pixelIndex = y * width + x;
+      const i = pixelIndex * 4;
       const r = clampByte(buffer[i]);
       const g = clampByte(buffer[i + 1]);
       const b = clampByte(buffer[i + 2]);
       const index = paletteLut[packRgb565(r, g, b)];
 
-      indices[y * width + x] = index;
+      indices[pixelIndex] = index;
+
+      if (frameMask && frameMask[pixelIndex] !== 0) {
+        continue;
+      }
 
       const paletteColor = palette[index];
       const errorR = r - paletteColor[0];
       const errorG = g - paletteColor[1];
       const errorB = b - paletteColor[2];
 
-      diffuseError(buffer, width, height, x + 1, y, errorR, errorG, errorB, 7 / 16);
-      diffuseError(buffer, width, height, x - 1, y + 1, errorR, errorG, errorB, 3 / 16);
-      diffuseError(buffer, width, height, x, y + 1, errorR, errorG, errorB, 5 / 16);
-      diffuseError(buffer, width, height, x + 1, y + 1, errorR, errorG, errorB, 1 / 16);
+      diffuseError(
+        buffer,
+        width,
+        height,
+        frameMask,
+        x + 1,
+        y,
+        errorR,
+        errorG,
+        errorB,
+        7 / 16,
+      );
+      diffuseError(
+        buffer,
+        width,
+        height,
+        frameMask,
+        x - 1,
+        y + 1,
+        errorR,
+        errorG,
+        errorB,
+        3 / 16,
+      );
+      diffuseError(
+        buffer,
+        width,
+        height,
+        frameMask,
+        x,
+        y + 1,
+        errorR,
+        errorG,
+        errorB,
+        5 / 16,
+      );
+      diffuseError(
+        buffer,
+        width,
+        height,
+        frameMask,
+        x + 1,
+        y + 1,
+        errorR,
+        errorG,
+        errorB,
+        1 / 16,
+      );
     }
   }
 
@@ -145,6 +310,7 @@ function diffuseError(
   buffer: Float32Array,
   width: number,
   height: number,
+  frameMask: Uint8Array | null,
   x: number,
   y: number,
   errorR: number,
@@ -152,13 +318,58 @@ function diffuseError(
   errorB: number,
   factor: number,
 ): void {
-  if (x < 0 || x >= width || y >= height) return;
+  if (x < 0 || x >= width || y >= height) {
+    return;
+  }
 
-  const i = (y * width + x) * 4;
+  const pixelIndex = y * width + x;
+
+  if (frameMask && frameMask[pixelIndex] !== 0) {
+    return;
+  }
+
+  const i = pixelIndex * 4;
 
   buffer[i] += errorR * factor;
   buffer[i + 1] += errorG * factor;
   buffer[i + 2] += errorB * factor;
+}
+
+// Renders the scene with the background layer omitted so alpha > 0 marks
+// exactly the pixels covered by the frame photo(s) and its drop shadow.
+function buildFrameMask(
+  maskCanvas: HTMLCanvasElement,
+  maskContext: CanvasRenderingContext2D,
+  maskPixelReader: GifPixelReader,
+  cssHeight: number,
+  cssWidth: number,
+  exportHeight: number,
+  exportWidth: number,
+  pixelRatio: number,
+  settings: SceneSettings,
+  loopProgress: number,
+): Uint8Array {
+  paintSceneExportFrame({
+    backgroundColor: settings.backgroundColor,
+    context: maskContext,
+    cssHeight,
+    cssWidth,
+    exportHeight,
+    exportWidth,
+    includeBackgroundFill: false,
+    loopProgress,
+    pixelRatio,
+    settings: { ...settings, includeBackground: false },
+  });
+
+  const maskData = maskPixelReader.readPixels(maskCanvas);
+  const mask = new Uint8Array(exportWidth * exportHeight);
+
+  for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex++) {
+    mask[pixelIndex] = maskData[pixelIndex * 4 + 3]! > 0 ? 1 : 0;
+  }
+
+  return mask;
 }
 
 function downloadBlob(blob: Blob, fileName: string): void {
@@ -209,13 +420,9 @@ export async function exportSceneGif({
   });
   const settings = getSceneSettings(state, { includeBackground: keepBackground });
   const durationSeconds = Math.max(0.2, state.timeline.durationSeconds);
-  const currentSize = getToolcraftVideoExportSize({ resolution: "current", state });
-  const downScale = Math.min(
-    1,
-    GIF_MAX_LONG_EDGE / Math.max(currentSize.width, currentSize.height),
-  );
-  const width = Math.max(2, Math.round(currentSize.width * downScale));
-  const height = Math.max(2, Math.round(currentSize.height * downScale));
+  const { height, pixelRatio, width } = getSceneGifExportSize(state);
+  const cssHeight = state.canvas.size.height;
+  const cssWidth = state.canvas.size.width;
 
   reportProgress(0.02);
   await loadSceneImages(settings);
@@ -232,6 +439,18 @@ export async function exportSceneGif({
   }
 
   const pixelReader = createGifPixelReader(width, height);
+  const maskCanvas = document.createElement("canvas");
+
+  maskCanvas.width = width;
+  maskCanvas.height = height;
+
+  const maskContext = maskCanvas.getContext("2d");
+
+  if (!maskContext) {
+    throw new Error("GIF export requires a 2D canvas context.");
+  }
+
+  const maskPixelReader = createGifPixelReader(width, height);
   const frameTimes = getGifFrameTimesSeconds(
     durationSeconds,
     settings.frames.length,
@@ -241,21 +460,36 @@ export async function exportSceneGif({
   const encoder = GIFEncoder();
 
   for (const [index, timeSeconds] of frameTimes.entries()) {
-    context.clearRect(0, 0, width, height);
-    context.fillStyle = settings.backgroundColor;
-    context.fillRect(0, 0, width, height);
-    drawScene({
+    const loopProgress = (timeSeconds % durationSeconds) / durationSeconds;
+
+    paintSceneExportFrame({
+      backgroundColor: settings.backgroundColor,
       context,
-      height,
-      loopProgress: (timeSeconds % durationSeconds) / durationSeconds,
+      cssHeight,
+      cssWidth,
+      exportHeight: height,
+      exportWidth: width,
+      includeBackgroundFill: keepBackground,
+      loopProgress,
+      pixelRatio,
       settings,
-      width,
     });
 
+    const frameMask = buildFrameMask(
+      maskCanvas,
+      maskContext,
+      maskPixelReader,
+      cssHeight,
+      cssWidth,
+      height,
+      width,
+      pixelRatio,
+      settings,
+      loopProgress,
+    );
     const data = pixelReader.readPixels(canvas);
-    const palette = quantize(data, 256);
-    const paletteLut = buildRgb565PaletteLut(palette);
-    const indexed = ditherToPalette(data, width, height, palette, paletteLut);
+    const indexed = indexGifSceneFrame(data, width, height, frameMask, settings);
+    const palette = buildGifPalette(data, frameMask);
 
     encoder.writeFrame(indexed, width, height, { delay: delayMs, palette });
     reportProgress(0.05 + (0.9 * (index + 1)) / frameTimes.length);
@@ -265,6 +499,7 @@ export async function exportSceneGif({
   }
 
   pixelReader.dispose();
+  maskPixelReader.dispose();
   encoder.finish();
 
   const gifBytes = encoder.bytesView();

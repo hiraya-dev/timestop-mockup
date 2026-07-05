@@ -263,8 +263,8 @@ export const appSchema = defineToolcraft({
               actions: [
                 {
                   icon: "upload-simple",
-                  label: "Export Video",
-                  value: "export-video",
+                  label: "Export GIF",
+                  value: "export-gif",
                   variant: "outline",
                 },
                 {
@@ -273,7 +273,11 @@ export const appSchema = defineToolcraft({
                   value: "export-png",
                   variant: "outline",
                 },
-                { icon: "upload-simple", label: "Export GIF", value: "export-gif" },
+                {
+                  icon: "upload-simple",
+                  label: "Export Video",
+                  value: "export-video",
+                },
               ],
               target: "export.actions",
               type: "panelActions",

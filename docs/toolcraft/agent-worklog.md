@@ -8,6 +8,57 @@ Mode: product
 
 ## Decision Trail
 
+### Iteration 5 — Video export reliability fix
+
+- Request: Video export stopped working after the PNG-matched encoder pass.
+- Task type: Export bug fix in `export-video.ts` and `export-render-size.ts`.
+- User-visible result: Video export works again across browsers by falling back to realtime `captureStream(30)` when manual `requestFrame` is unavailable, pacing manual frames in real time for MediaRecorder, retrying recorder bitrate setup, and fitting image-export sizes inside the encoder-safe 4K box.
+- Source/reference checked: failing manual-only export path in `export-video.ts`; Toolcraft footer action error handling only logs to console.
+- Reference inputs: user report that video no longer exports.
+- Docs/contracts read: workflow.md, assembly-workflow.md export notes.
+- Contract rules applied: output-export-required, workflow-required.
+- Decision: Probe manual frame capture before choosing stream mode; replace `setTimeout(0)` frame bursts with paced async export; add recorder bitrate fallback; cap animated video render size to encoder-safe 4K even when image export is 8K.
+- Alternatives rejected: keeping manual-only `requestFrame` (breaks Safari and some browsers); uncapped 8K video frames (MediaRecorder/canvas failures).
+- State/output mapping: `getSceneAnimatedExportSize` now fits image-export dimensions inside `getToolcraftVideoExportSize("4k")`; `exportSceneVideo` chooses manual vs realtime capture at runtime.
+- Files changed: `src/app/export-video.ts`, `src/app/export-render-size.ts`, `src/app/app-product.test.ts`.
+- Verification: Tier 3 — `pnpm verify:quick`, targeted Playwright export action test.
+- Skipped checks: full browser perf checkpoint.
+- Risks: realtime fallback duration still follows wall clock; very long loops take proportionally longer to export.
+
+### Iteration 4 — PNG-matched animated export quality
+
+- Request: GIF and MP4 exports still look fuzzy; PNG quality is good but user needs animation.
+- Task type: Export encoder/renderer pass for GIF and video.
+- User-visible result: Video export renders offline at the same resolution path as PNG (image export resolution), encodes each timeline frame with manual `captureStream(0)` + `requestFrame`, and uses a higher bitrate; GIF export uses the same render scaling (2048px long-edge cap), skips background dither unless the backdrop is a gradient or blurred image, and keeps masked nearest-color quantization for UI frames.
+- Source/reference checked: `export-image.ts`, `export-video.ts`, `export-gif.ts`, user-reported fuzzy GIF frame text and MP4 softness.
+- Reference inputs: user GIF/PNG comparison samples.
+- Docs/contracts read: AGENTS.md, workflow.md, renderer-technique.md.
+- Contract rules applied: output-export-required, workflow-required.
+- Decision: Share PNG export sizing through `getSceneAnimatedExportSize`; rewrite video export as offline frame capture instead of wall-clock `requestAnimationFrame` recording; reduce GIF grain by conditional dithering and higher render resolution.
+- Alternatives rejected: GIF-only guidance (user needs animation); raising bitrate alone on realtime MediaRecorder (still misses frames and records below PNG resolution); APNG dependency in this pass (video is the full-quality animated path).
+- State/output mapping: video `current` resolution follows `export.image.resolution`; video `4k` keeps `export.video.resolution`; GIF uses capped image-export sizing; render uses `paintSceneExportFrame` with high-quality image smoothing and integer frame bounds.
+- Files changed: `src/app/export-render-size.ts`, `src/app/export-scene-canvas.ts`, `src/app/export-video.ts`, `src/app/export-gif.ts`, `src/app/scene.ts`, `src/app/app-product.test.ts`.
+- Verification: Tier 3 — `pnpm verify:quick`.
+- Skipped checks: full browser perf checkpoint (export path only).
+- Risks: GIF remains 256-color; browsers without manual `requestFrame` cannot export video; larger 4K video files and slower exports.
+
+### Iteration 3 — Sharp UI frames in GIF export
+
+- Request: GIF export keeps canvas backgrounds smooth but UI frame screenshots (especially text) look fuzzy.
+- Task type: Export encoder fix in `export-gif.ts`.
+- User-visible result: GIF export builds a frame-weighted palette, dithers only the canvas background, and maps UI frame pixels with nearest-color quantization so text stays legible.
+- Source/reference checked: user-provided GIF frame samples with sharp background and fuzzy framed UI text; prior reverted `frameMask` experiment in `export-gif.ts`.
+- Reference inputs: user GIF/PNG export samples from Ruang mockups.
+- Docs/contracts read: AGENTS.md, workflow.md, renderer-technique.md.
+- Contract rules applied: output-export-required, workflow-required.
+- Decision: Mask frame pixels via a background-less render pass; quantize frame and background pixels into separate palettes (200 + 56 colors); Floyd-Steinberg dither only background pixels and block error diffusion across the frame boundary.
+- Alternatives rejected: disabling dither globally (regresses blurred gradient backgrounds); raising GIF long-edge only (does not fix text grain from error diffusion); PNG-only guidance without encoder fix (user needs GIF output).
+- State/output mapping: no schema changes; `exportSceneGif` renders mask pass per timeline sample, then `buildGifPalette` + masked `ditherToPalette` before `gifenc` frame write.
+- Files changed: `src/app/export-gif.ts`, `src/app/app-product.test.ts`.
+- Verification: Tier 3 — `pnpm verify:quick`.
+- Skipped checks: full browser perf checkpoint (export-only encoder pass).
+- Risks: GIF remains 256-color; extremely colorful UI frames may still band slightly compared to PNG.
+
 ### Iteration 2 — Loop Frame rename and demo polish
 
 - Request: Rename the app to Loop Frame; position it as a polished product demo, not a sellable standalone product.

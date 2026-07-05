@@ -778,7 +778,7 @@ export const appAcceptance: readonly ToolcraftComponentAcceptance[] = [
   },
   {
     automated: true,
-    automatedTestName: "video export resolution uses encoder safe dimensions",
+    automatedTestName: "video export resolution matches image export quality at current video size",
     browser: true,
     browserTestName:
       "browser: video export format and resolution produce a real video matching timeline duration",

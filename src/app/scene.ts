@@ -247,6 +247,8 @@ function drawTransformedImage(
   const drawHeight = rotated ? width : height;
 
   context.save();
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
   context.translate(x + width / 2, y + height / 2);
   context.rotate((rotationDeg * Math.PI) / 180);
   context.scale(transform?.flipHorizontal ? -1 : 1, transform?.flipVertical ? -1 : 1);
@@ -482,8 +484,8 @@ function drawFrame(
   const maxWidth = (width * settings.scale) / 100;
   const maxHeight = (height * settings.scale) / 100;
   const containScale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
-  const drawWidth = sourceWidth * containScale;
-  const drawHeight = sourceHeight * containScale;
+  const drawWidth = Math.round(sourceWidth * containScale);
+  const drawHeight = Math.round(sourceHeight * containScale);
   const x = (width - drawWidth) / 2;
   const y = (height - drawHeight) / 2;
   const radiusScale = Math.min(width, height) / 1080;
